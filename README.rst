@@ -1,4 +1,3 @@
-
 Shcripts
 ---------------------------------
 
@@ -8,6 +7,7 @@ Some BASH scripts that I use and I think might be useful for others as well! It 
 * `pinyin_tones.py`_ : Add tone marks instead of numbers to Pinyin; use as ``python pinyin_tones.py ni3hao3``.
 * `macro_record.sh`_ / `macro_play.sh`_ : Record and play back keyboard macros on Ubuntu; see `Ubuntu macros`_.
 * `json_zoom.py`_ : Explore big json files; use as ``python json_zoom.py file.json key1 key2 ind3`` or see -h.
+* `git_changes.sh`_ : Find all descendant repositories with unpushed changes on current branch.
 
 Some of these might rely on BASH or Ubuntu features and might not be immediately portable...
 
@@ -24,5 +24,6 @@ Revised BSD license, see LICENSE.txt. You can do anything as long as you include
 .. _macro_record.sh: https://github.com/mverleg/shcripts/blob/master/macro_record.sh
 .. _macro_play.sh: https://github.com/mverleg/shcripts/blob/master/macro_play.sh
 .. _json_zoom.py: https://github.com/mverleg/shcripts/blob/master/json_zoom.py
+.. _git_changes.sh: https://github.com/mverleg/shcripts/blob/master/_git_changes.sh
 
 
