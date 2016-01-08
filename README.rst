@@ -11,6 +11,8 @@ Some BASH scripts that I use and I think might be useful for others as well! It 
 
 Some of these might rely on BASH or Ubuntu features and might not be immediately portable...
 
+You can source `aliasses.sh` to add some short aliasses for the functions in the other files.
+
 License
 ---------------------------------
 
