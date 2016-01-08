@@ -2,9 +2,10 @@
 Shcripts
 ---------------------------------
 
-Some BASH scripts that I use and I think might be useful for others as well!
+Some BASH scripts that I use and I think might be useful for others as well! It also includes some Python2 scripts meant for command-line usage.
 
 * command_logging.sh
+* pinyin_tones.py
 
 Some of these might rely on BASH or Ubuntu features and might not be immediately portable...
 
