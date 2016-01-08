@@ -11,7 +11,7 @@ Some BASH scripts that I use and I think might be useful for others as well! It 
 
 Some of these might rely on BASH or Ubuntu features and might not be immediately portable...
 
-You can source `aliasses.sh` to add some short aliasses for the functions in the other files.
+You can source `aliasses.sh`_ to add some short aliasses for the functions in the other files.
 
 License
 ---------------------------------
@@ -19,7 +19,7 @@ License
 Revised BSD license, see LICENSE.txt. You can do anything as long as you include the license, don't use my name for promotion and are aware that there is no warranty.
 
 .. _logging: https://markv.nl/blog/logging-to-files
-.. _Ubuntu macros: <https://markv.nl/blog/ubuntu-macros>
+.. _Ubuntu macros: https://markv.nl/blog/ubuntu-macros
 
 .. _command_logging.sh: https://github.com/mverleg/shcripts/blob/master/command_logging.sh
 .. _pinyin_tones.py: https://github.com/mverleg/shcripts/blob/master/pinyin_tones.py
