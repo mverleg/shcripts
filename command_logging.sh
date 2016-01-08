@@ -18,6 +18,7 @@ function log_err_all ()
 	#
 	# Similar to log_err_all_named but uses the bassename of the first part as name.
 	# 
+	if [ -z "$1" ]; then printf "log_err_all needs a command to execute"; return 1; fi
 	nm=$(basename $1)
 	nm="${nm%.*}";
 	log_err_all_named "$nm" $@
