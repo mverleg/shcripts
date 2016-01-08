@@ -26,6 +26,8 @@ Revised BSD license, see LICENSE.txt. You can do anything as long as you include
 .. _macro_record.sh: https://github.com/mverleg/shcripts/blob/master/macro_record.sh
 .. _macro_play.sh: https://github.com/mverleg/shcripts/blob/master/macro_play.sh
 .. _json_zoom.py: https://github.com/mverleg/shcripts/blob/master/json_zoom.py
-.. _git_changes.sh: https://github.com/mverleg/shcripts/blob/master/_git_changes.sh
+.. _git_changes.sh: https://github.com/mverleg/shcripts/blob/master/git_changes.sh
+.. _aliasses.sh: https://github.com/mverleg/shcripts/blob/master/aliasses.sh
+
 
 
