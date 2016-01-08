@@ -37,6 +37,8 @@ function log_err_all_named ()
 	#  -t  Truncate logs to 5k lines (before starting).
 	#  -u  Do not add timestamps.
 	# 
+	if [ -z "$1" ]; then printf "log_err_all_named needs path to log as first argument"; return 1; fi
+	if [ -z "$2" ]; then printf "log_err_all_named needs a command to execute"; return 1; fi
 	
 	# get flags
 	flags=""
@@ -76,7 +78,6 @@ function log_err_all_named ()
 			} 3>&1 1>&2 2>&3 | ts '%Y-%m-%d,%H:%M:%.S ' | tee $ap "$fname.err"
 		} |& tee $ap "$fname.all" | sed 's/^.\{28\}//'
 	fi
-	printf '\n'
 }
 
 function test_logging_function ()
