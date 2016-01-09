@@ -18,9 +18,20 @@ function log_err_all ()
 	#
 	# Similar to log_err_all_named but uses the bassename of the first part as name.
 	# 
-	nm=$(basename $1)
-	nm="${nm%.*}";
-	log_err_all_named "$nm" $@
+	cmd=$@
+	flags=""
+	for word in $cmd; do
+		if [[ $word == -* ]]; then
+			flags="$flags $word"
+		else
+			first="$word"
+			break
+		fi
+		cmd=$(echo $cmd | cut -d ' ' -f 2-)
+	done
+	nm=$(basename $first)
+	nm="${nm%.*}"
+	log_err_all_named $flags "$nm" $cmd
 }
 
 function log_err_all_named ()
@@ -52,6 +63,7 @@ function log_err_all_named ()
 			break
 		fi
 	done
+
 	
 	# handle flags
 	if [[ $flags == *"-a"* ]]; then ap="--append"; else ap=""; fi

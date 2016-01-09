@@ -14,6 +14,7 @@ alias git_changes="git_changes_recursive"
 
 # json
 alias json_zoom="python $here/json_zoom.py"
+function json_dump () { cat "$1" | python -m json.tool > /tmp/jsonv.json; less -S /tmp/jsonv.json; }
 
 # Chinese
 alias pinyin_tones="python $here/pinyin_tones.py"
