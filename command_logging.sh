@@ -10,7 +10,7 @@ function tail_truncate ()
 	if [ -n "$2" ]; then cnt="$2"; else cnt="5000"; fi
 	touch "$1" || return 2
 	content="$(tail -n $cnt $1)"
-	printf "$content\n" > "$1"
+	printf -- "$content\n" > "$1"
 }
 
 function log_err_all () 
