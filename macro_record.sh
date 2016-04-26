@@ -1,25 +1,17 @@
 #!/usr/bin/env bash
 
-macrofile='/tmp/macro.recording'
-lockfile='/tmp/macro.record.lock'
+source "${BASH_SOURCE%/*}/macro_setup.sh"
 
-if [ -e "$lockfile" ]
-then
-	if [ `stat --format=%Y $lockfile` -le $(( `date +%s` - 150 )) ]
-	then
-		notify-send "It appears a macro is already being recorded (manually delete $lockfile if not). Stopping."
-		exit 1;
-	else
-		rm -f "$lockfile"
-	fi
-fi
+notify_capped "Recording macro; press ESC to stop" 
 
-notify-send "Recording macro; press ESC to stop" 
+timeout 150 xmacrorec2 -k 9 > "$macrofile" &
 
-timeout 150 xmacrorec2 -k 9 > "$macrofile"
+newpid="$!"
+echo "$newpid" > "$pidfile"
+wait "$newpid"
 
-notify-send "Recording macro finished; use F10 to play it"
+notify_capped "Recording macro finished; use F10 to play it"
 
-rm -f "$lockfile"
+rm -f "$pidfile"
 
 
