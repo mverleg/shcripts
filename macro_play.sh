@@ -1,19 +1,14 @@
 #!/usr/bin/env bash
 
-macrofile='/tmp/macro.recording'
-lockfile='/tmp/macro.play.notify.lock'
+source "${BASH_SOURCE%/*}/macro_setup.sh"
 
-if [ -e "$lockfile" ]
+if [ -e "$macrofile" ]
 then
-	if [ `stat --format=%Y $lockfile` -le $(( `date +%s` - 10 )) ]
-	then
-		notify-send "Playing back macro (on $DISPLAY) - expired lock"
-	fi
-else
-	notify-send "Playing back macro (on $DISPLAY) - no lock"
+	echo "no recording to play ($macrofile does not exist)"
+	exit 1
 fi
 
-touch "$lockfile"
+notify_capped "Playing back macro" 
 
 xmacroplay -d 2 "$DISPLAY" < "$macrofile"
 
