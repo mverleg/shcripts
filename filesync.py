@@ -1,5 +1,7 @@
 
 #todo: test if it works locally
+#todo: refactor delete option into separate commands?
+#todo: add two-way sync (possibly just sequence of pull & push)
 
 """
 Git is not great with storing large files, and often you don't need history in those cases.
@@ -34,8 +36,12 @@ def parse_args(args):
 	parser.add_argument('--notest', dest='do_test', action='store_false', default=True, help='skip some tests')
 	subparsers = parser.add_subparsers(dest='action')
 	pull_parser = subparsers.add_parser('pull')
+	pull_parser.add_argument('-d', '--delete', dest='delete', action='store_true', default=False,
+		help='Delete local files that do not exist on the remote.')
 	# foo_parser.add_argument('-c', '--count')
 	push_parser = subparsers.add_parser('push')
+	push_parser.add_argument('-d', '--delete', dest='delete', action='store_true', default=False,
+		help='Delete files on the remote that do not exist locally.')
 	init_parser = subparsers.add_parser('init')
 	init_parser.add_argument(dest='remote', help='The remote, format `ssh_host:/path/to/dir`')
 	unlock_parser = subparsers.add_parser('unlock', help='After you make sure no other sync processes are running locally '
@@ -93,16 +99,8 @@ def test_remote(remote_host, remote_path, verbose=0):
 	"""
 	Test that logging in to the remote works and that the directory exists.
 	"""
-	# cmd = ['ssh', remote_host, '"if [ -d {0:s} ]; then echo yes; else echo no; fi"'.format(remote_path)]
-	# cmd = ['ssh', remote_host] + "if [ -d \'{0:s}\' ]; then echo \'yes\'; else echo \'no\'; fi".format(remote_path).split()
-	# cmd = ['bash -c \'if [ -d "{0:s}" ]; then echo yes; else echo no; fi\''.format(remote_path)]
 	cmd = ['ssh', remote_host, ('"if [ -d \"{0:s}\" ]; then if [ -e \"{1:s}\" ]; then echo \"locked\"; else echo \"ok\"; fi; '
 		'else echo \"nonexistent\"; fi;"').format(remote_path, join(remote_path, lock_file_name))]
-	# cmd = ['ssh scar "if [ -d "/data/" ]; then echo "yes"; else echo "no"; fi;"']
-	# cmd = ['ssh scar "echo \"hi\"; if [ -d "/filesy/" ]; then echo " yes"; else echo " no"; fi"']
-	# cmd = shlex.split('bash -c "if [ -d {0:s} ]; then echo yes; else echo no; fi"'.format(remote_path))
-	# Popen('ssh scar "echo \"\$HOSTNAME\"; if [ -d "/filesy/" ]; then echo " yes"; else echo " no"; fi"', shell=True, stdout=PIPE, stderr=PIPE).communicate()
-	# print(cmd)
 	if verbose:
 		stdout.write(' '.join(cmd) + '\n')
 	proc = Popen(' '.join(cmd), stdin=None, stdout=PIPE, stderr=PIPE, shell=True)
@@ -124,6 +122,9 @@ def test_remote(remote_host, remote_path, verbose=0):
 
 
 def init(remote, local_dir=None, do_test=True, verbose=0):
+	"""
+	Initialize the current directory as a 'repository', by making a `.filesync_remote` file.
+	"""
 	remote_host, remote_path = parse_remote(remote)
 	local_dir = local_dir or getcwd()
 	pth = join(local_dir, remote_file_name)
@@ -143,47 +144,52 @@ def init(remote, local_dir=None, do_test=True, verbose=0):
 
 
 def unlock(local_path, remote_host, remote_path, verbose=0):
+	"""
+	Release the locks locally and remotely by removing the lock files.
+	Should only be used after making sure that no rsync process is running.
+	"""
+	unlock_local(local_path, verbose=verbose)
+	unlock_remote(remote_host, remote_path, verbose=verbose)
+
+
+def unlock_local(local_path, verbose=0):
 	pth = join(local_path, lock_file_name)
 	if exists(pth):
 		stdout.write('removing lock file {0:s}\n'.format(pth))
 		remove(pth)
 	elif verbose:
 		stdout.write('local directory not locked\n')
+
+
+def unlock_remote(remote_host, remote_path, verbose=0):
 	pth = join(remote_path, lock_file_name)
-	# cmd = ['ssh', 'scar', '"if [ -e \"{0:s}\" ]; then echo \"removing lock file {0:s} on {1:s}\"; rm -f \"{0:s}\"; fi;"'.format(pth, remote_host)]
-	# cmd = ['ssh', remote_host, '"if [ -e \"{0:s}\" ]; then echo \"removing lock file {0:s} on {1:s}\"; fi;"'.format(remote_path, join(pth, remote_host))]
-	# cmd = ['ssh', remote_host, '"echo \"\$HOSTNAME\""'.format(remote_path, join(pth, remote_host))]
 	cmd = ['ssh', remote_host, '"if [ -e "{0:s}" ]; then echo "removing lock file {0:s} on {1:s}"; rm -f "{0:s}"; {2:s} fi;"'
 		.format(pth, remote_host, 'else echo "remote on {0:s} not locked";'.format(remote_host) if verbose else '')]
 	if verbose:
 		stdout.write(' '.join(cmd) + '\n')
-	# print('hello?')
 	proc = Popen(' '.join(cmd), shell=True)
-	# print('hello!')
 	proc.communicate()
-	# print('hello!!')
-	exit(1)
 
 
-def push(local_dir, remote_host, remote_dir, verbose=0):
+def push(local_dir, remote_host, remote_dir, delete=False, verbose=0):
 	"""
 	Send the local files to the remote.
 	"""
 	ignore_file_pth = join(local_dir, ignore_file_name)
 	transmit_dir(source_host=None, source_dir=local_dir, target_host=remote_host, target_dir=remote_dir,
-		ignore_file_pth=ignore_file_pth, verbose=verbose)
+		delete=delete, ignore_file_pth=ignore_file_pth, verbose=verbose)
 
 
-def pull(local_dir, remote_host, remote_dir, verbose=0):
+def pull(local_dir, remote_host, remote_dir, delete=False, verbose=0):
 	"""
 	Get the remote files to the local directory.
 	"""
 	ignore_file_pth = join(local_dir, ignore_file_name)
 	transmit_dir(source_host=remote_host, source_dir=remote_dir, target_host=None, target_dir=local_dir,
-		ignore_file_pth=ignore_file_pth, verbose=verbose)
+		delete=delete, ignore_file_pth=ignore_file_pth, verbose=verbose)
 
 
-def transmit_dir(source_host, source_dir, target_host, target_dir, ignore_file_pth='', verbose=0):
+def transmit_dir(source_host, source_dir, target_host, target_dir, delete, ignore_file_pth='', verbose=0):
 	"""
 	Send everything from `source_dir` to `target_dir`.
 	"""
@@ -192,7 +198,15 @@ def transmit_dir(source_host, source_dir, target_host, target_dir, ignore_file_p
 	if isfile(ignore_file_pth):
 		cmd += ['--exclude-from={0:s}'.format(ignore_file_pth)]
 	local_lock_type, remote_lock_type = (LOCK_EX, 'shared') if source_host else (LOCK_SH, 'exclusive')
-	local_dir, remote_dir = (target_dir, source_dir) if source_host else (source_dir, target_dir)
+	if source_host and not target_host:
+		local_host, local_dir, remote_host, remote_dir  = target_host, target_dir, source_host, source_dir
+	elif target_host and not source_host:
+		local_host, local_dir, remote_host, remote_dir  = source_host, source_dir, target_host, target_dir
+	else:
+		raise NotImplementedError('The situation where neither or both source and target are remote, is not implemented.')
+		#todo
+	if delete:
+		cmd += ['--delete']
 	cmd += [('--rsync-path=\'function lock_rsync () {{ for target; do true; done; mkdir -p "$target"; '
 		'flock --{0:s} --timeout=1 "{1:s}" --command "\\rsync $*"; }}; lock_rsync\'')
 			.format(remote_lock_type, join(remote_dir, lock_file_name))]
@@ -201,10 +215,14 @@ def transmit_dir(source_host, source_dir, target_host, target_dir, ignore_file_p
 		stdout.write(' '.join(cmd) + '\n')
 	with open(join(local_dir, lock_file_name), 'w+') as fh:
 		flock(fh, local_lock_type)
-		proc = Popen(' '.join(cmd), stdin=None, stdout=PIPE, stderr=PIPE, shell=True)
-		for line in iter(proc.stdout.readline, b''):
-			stdout.write(line.split(' ', 1)[-1])
-		out, err = proc.communicate()
+		try:
+			proc = Popen(' '.join(cmd), stdin=None, stdout=PIPE, stderr=PIPE, shell=True)
+			for line in iter(proc.stdout.readline, b''):
+				stdout.write(line.split(' ', 1)[-1])
+			out, err = proc.communicate()
+		except KeyboardInterrupt:
+			unlock_remote(remote_host, remote_dir, verbose=verbose)
+			out, err = '', ''
 		flock(fh, LOCK_UN)
 	if err:
 		stderr.write('there was a problem while transmitting from {0:s} to {1:s} :\n'.format(source_dir, target_dir))
@@ -214,6 +232,7 @@ def transmit_dir(source_host, source_dir, target_host, target_dir, ignore_file_p
 
 def main(args):
 	opts = parse_args(args)
+	print(opts)
 	if opts.action == 'init':
 		init(opts.remote, do_test=opts.do_test, verbose=opts.verbose)
 		return
@@ -226,12 +245,11 @@ def main(args):
 		return
 	if opts.do_test:
 		if not test_remote(remote_host, remote_path, verbose=opts.verbose):
-			# stderr.write('directory `{1:s}` not found or could not log in to host `{0:s}`\n'.format(remote_host, remote_path))
 			exit(2)
 	if opts.action == 'push':
-		push(local_path, remote_host, remote_path, verbose=opts.verbose)
+		push(local_path, remote_host, remote_path, delete=opts.delete, verbose=opts.verbose)
 	if opts.action == 'pull':
-		pull(local_path, remote_host, remote_path, verbose=opts.verbose)
+		pull(local_path, remote_host, remote_path, delete=opts.delete, verbose=opts.verbose)
 
 
 if __name__ == '__main__':
