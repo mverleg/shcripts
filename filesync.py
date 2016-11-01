@@ -7,17 +7,20 @@ So why not use some wrapping code for rsync instead? That's what this does.
 
 from argparse import ArgumentParser
 from copy import copy
+from fcntl import flock, LOCK_EX, LOCK_SH, LOCK_UN
 from os import getcwd
 from re import match
 from sys import stderr, argv, stdout
-from os.path import isdir, join, dirname, isfile
+from os.path import isdir, join, dirname, isfile, exists
 from subprocess import Popen, PIPE
 
 
 remote_file_name = '.filesync_remote'
 ignore_file_name = '.filesync_ignore'
+lock_file_name = '.rsync.lock~'
 sync_cmd = ['rsync', '--archive', '--recursive', '--hard-links', '--itemize-changes',
-	'--group', '--compress', '--rsh=ssh', '--exclude={0:s}'.format(remote_file_name),]
+	'--group', '--compress', '--rsh=ssh', '--exclude={0:s}'.format(remote_file_name),
+    '--exclude={0:s}'.format(lock_file_name),]
 
 
 def parse_args(args):
@@ -116,6 +119,10 @@ def init(remote, local_dir=None, do_test=True, verbose=0):
 			stderr.write('directory `{1:s}` not found or could not log in to host `{0:s}`\n'.format(remote_host, remote_path))
 	with open(pth, 'w+') as fh:
 		fh.write('{0:s}:{1:s}'.format(remote_host, remote_path))
+	pth = join(local_dir, ignore_file_name)
+	if not exists(pth):
+		with open(pth, 'w+') as fh:
+			fh.write('.git/\n')
 	stdout.write('sync directory initialized with remote directory {1:s} on host {0:s}\n'.format(remote_host, remote_path))
 
 
@@ -124,12 +131,13 @@ def push(local_dir, remote_host, remote_dir, verbose=0):
 	Send the local files to the remote.
 	"""
 	ignore_file_pth = join(local_dir, ignore_file_name)
-	transmit_dir(source_dir=local_dir, target_dir='{0:s}:{1:s}'.format(remote_host, remote_dir),
+	transmit_dir(source_host=None, source_dir=local_dir, target_host=remote_host, target_dir=remote_dir,
 		ignore_file_pth=ignore_file_pth, verbose=verbose)
 
 
+#todo: test if it works locally
 #todo: show an error when locked
-#todo: also use flock locally
+#todo: also use flock on local machine
 
 
 def pull(local_dir, remote_host, remote_dir, verbose=0):
@@ -137,31 +145,38 @@ def pull(local_dir, remote_host, remote_dir, verbose=0):
 	Get the remote files to the local directory.
 	"""
 	ignore_file_pth = join(local_dir, ignore_file_name)
-	transmit_dir(source_dir='{0:s}:{1:s}'.format(remote_host, remote_dir), target_dir=local_dir,
-		ignore_file_pth=ignore_file_pth, lock_file='{0:s}'.format(join(remote_dir, '.lock~')), verbose=verbose)
+	transmit_dir(source_host=remote_host, source_dir=remote_dir, target_host=None, target_dir=local_dir,
+        ignore_file_pth=ignore_file_pth, verbose=verbose)
 
 
-def transmit_dir(source_dir, target_dir, ignore_file_pth='', remote_lock='exclusive', lock_file='/tmp/rsync_lock~', verbose=0):
+def transmit_dir(source_host, source_dir, target_host, target_dir, ignore_file_pth='', verbose=0):
 	"""
 	Send everything from `source_dir` to `target_dir`.
 	"""
 	assert not source_dir.endswith('/') and not target_dir.endswith('/')
-	assert remote_lock in ['exclusive', 'shared', None]
+	# assert remote_lock in ['exclusive', 'shared', None]
 	cmd = copy(sync_cmd)
 	if isfile(ignore_file_pth):
-		cmd += ['--exclude-from', ignore_file_pth]
-	if remote_lock:
-		cmd += ('--rsync-path=\'function lock_rsync () { flock --{0:s} --timeout=5 "{1:s}" '
-			'--command "rsync $*"; }; lock_rsync\''.format(remote_lock, lock_file))
-	cmd += ['{0:s}/'.format(source_dir), '{0:s}'.format(target_dir)]
+		cmd += ['--exclude-from={0:s}'.format(ignore_file_pth)]
+	local_lock_type, remote_lock_type = (LOCK_EX, 'shared') if source_host else (LOCK_SH, 'exclusive')
+	local_dir, remote_dir = (target_dir, source_dir) if source_host else (source_dir, target_dir)
+	# remote_lock_file = join(target_dir, 'rsync.lock~')
+	cmd += [('--rsync-path=\'function lock_rsync () {{ for target; do true; done; mkdir -p "$target"; '
+        'flock --{0:s} --timeout=1 "{1:s}" --command "\\rsync $*"; }}; lock_rsync\'')
+		    .format(remote_lock_type, join(remote_dir, lock_file_name))]
+	cmd += ['{0:s}:{1:s}/'.format(source_host or '', source_dir).lstrip(':'), '{0:s}:{1:s}'.format(target_host or '', target_dir).lstrip(':')]
 	if verbose:
 		stdout.write(' '.join(cmd) + '\n')
-	proc = Popen(cmd, stdin=None, stdout=PIPE, stderr=PIPE)
-	for line in iter(proc.stdout.readline, b''):
-		stdout.write(line.split(' ', 1)[-1])
-	out, err = proc.communicate()
+	with open(join(local_dir, lock_file_name), 'w+') as fh:
+		flock(fh, local_lock_type)
+		proc = Popen(' '.join(cmd), stdin=None, stdout=PIPE, stderr=PIPE, shell=True)
+		# proc = Popen(cmd, stdin=None, stdout=PIPE, stderr=PIPE)
+		for line in iter(proc.stdout.readline, b''):
+			stdout.write(line.split(' ', 1)[-1])
+		out, err = proc.communicate()
+		flock(fh, LOCK_UN)
 	if err:
-		stderr.write('there was a problem while transmitting from {0:s} to {1:s}:\n'.format(source_dir, target_dir))
+		stderr.write('there was a problem while transmitting from {0:s} to {1:s} :\n'.format(source_dir, target_dir))
 		stderr.write(str(err) + '\n')
 		return
 
@@ -169,7 +184,6 @@ def transmit_dir(source_dir, target_dir, ignore_file_pth='', remote_lock='exclus
 def main(args):
 	opts = parse_args(args)
 	if opts.action == 'init':
-		print('init!')
 		init(opts.remote, do_test=opts.do_test, verbose=opts.verbose)
 		return
 	remote = read_remote(getcwd(), verbose=opts.verbose)
