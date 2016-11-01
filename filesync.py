@@ -2,6 +2,7 @@
 #todo: test if it works locally
 #todo: refactor delete option into separate commands?
 #todo: add two-way sync (possibly just sequence of pull & push)
+#todo: add clone
 
 """
 Git is not great with storing large files, and often you don't need history in those cases.
@@ -32,17 +33,17 @@ def parse_args(args):
 	Parse the command line arguments and return the results.
 	"""
 	parser = ArgumentParser()
-	parser.add_argument('-v', '--verbose', dest='verbose', action='count', default=0, help='add this flag to get more output')
-	parser.add_argument('--notest', dest='do_test', action='store_false', default=True, help='skip some tests')
+	parser.add_argument('-v', '--verbose', dest='verbose', action='count', default=0, help='Add this flag to get more output.')
+	parser.add_argument('--notest', dest='do_test', action='store_false', default=True, help='Skip some tests (faster but fewer warnings).')
 	subparsers = parser.add_subparsers(dest='action')
-	pull_parser = subparsers.add_parser('pull')
+	pull_parser = subparsers.add_parser('pull', help='Download changes from the remote server to the local directory (deleting files is optional).')
 	pull_parser.add_argument('-d', '--delete', dest='delete', action='store_true', default=False,
 		help='Delete local files that do not exist on the remote.')
 	# foo_parser.add_argument('-c', '--count')
-	push_parser = subparsers.add_parser('push')
+	push_parser = subparsers.add_parser('push', help='Send local changes to the remote server (deleting files is optional).')
 	push_parser.add_argument('-d', '--delete', dest='delete', action='store_true', default=False,
 		help='Delete files on the remote that do not exist locally.')
-	init_parser = subparsers.add_parser('init')
+	init_parser = subparsers.add_parser('init', help='Turn the current directory into a repository (provide `host:directory`).')
 	init_parser.add_argument(dest='remote', help='The remote, format `ssh_host:/path/to/dir`')
 	unlock_parser = subparsers.add_parser('unlock', help='After you make sure no other sync processes are running locally '
 		'or remotely, you can use this to force releasing locks.')
@@ -104,7 +105,7 @@ def test_remote(remote_host, remote_path, verbose=0):
 	if verbose:
 		stdout.write(' '.join(cmd) + '\n')
 	proc = Popen(' '.join(cmd), stdin=None, stdout=PIPE, stderr=PIPE, shell=True)
-	out, err = [(val or '').strip() for val in proc.communicate()]
+	out, err = [(val or b'').decode('ascii').strip() for val in proc.communicate()]
 	if out == 'locked':
 		stderr.write(('directory `{1:s}` is already locked on host `{0:s}`; another synchronization '
 			'may be running; if not, use `unlock`.\n').format(remote_host, remote_path))
@@ -115,7 +116,7 @@ def test_remote(remote_host, remote_path, verbose=0):
 	elif out == 'ok':
 		return True
 	else:
-		err += 'no or incorrect output received: "{0:s}"'.format(out.replace(b'\n', b''))
+		err += ' no or incorrect output received: "{0:s}"'.format(out.replace(b'\n', b''))
 	stderr.write('there was a problem while connecting to the remote {0:s}:\n'.format(remote_host))
 	stderr.write(str(err) + '\n')
 	return False
@@ -218,7 +219,7 @@ def transmit_dir(source_host, source_dir, target_host, target_dir, delete, ignor
 		try:
 			proc = Popen(' '.join(cmd), stdin=None, stdout=PIPE, stderr=PIPE, shell=True)
 			for line in iter(proc.stdout.readline, b''):
-				stdout.write(line.split(' ', 1)[-1])
+				stdout.write(line.decode('ascii').split(' ', 1)[-1])
 			out, err = proc.communicate()
 		except KeyboardInterrupt:
 			unlock_remote(remote_host, remote_dir, verbose=verbose)
@@ -232,7 +233,6 @@ def transmit_dir(source_host, source_dir, target_host, target_dir, delete, ignor
 
 def main(args):
 	opts = parse_args(args)
-	print(opts)
 	if opts.action == 'init':
 		init(opts.remote, do_test=opts.do_test, verbose=opts.verbose)
 		return
