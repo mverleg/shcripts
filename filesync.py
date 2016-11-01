@@ -1,4 +1,6 @@
 
+#todo: test if it works locally
+
 """
 Git is not great with storing large files, and often you don't need history in those cases.
 
@@ -8,7 +10,7 @@ So why not use some wrapping code for rsync instead? That's what this does.
 from argparse import ArgumentParser
 from copy import copy
 from fcntl import flock, LOCK_EX, LOCK_SH, LOCK_UN
-from os import getcwd
+from os import getcwd, remove
 from re import match
 from sys import stderr, argv, stdout
 from os.path import isdir, join, dirname, isfile, exists
@@ -20,7 +22,7 @@ ignore_file_name = '.filesync_ignore'
 lock_file_name = '.rsync.lock~'
 sync_cmd = ['rsync', '--archive', '--recursive', '--hard-links', '--itemize-changes',
 	'--group', '--compress', '--rsh=ssh', '--exclude={0:s}'.format(remote_file_name),
-    '--exclude={0:s}'.format(lock_file_name),]
+	'--exclude={0:s}'.format(lock_file_name),]
 
 
 def parse_args(args):
@@ -36,6 +38,8 @@ def parse_args(args):
 	push_parser = subparsers.add_parser('push')
 	init_parser = subparsers.add_parser('init')
 	init_parser.add_argument(dest='remote', help='The remote, format `ssh_host:/path/to/dir`')
+	unlock_parser = subparsers.add_parser('unlock', help='After you make sure no other sync processes are running locally '
+		'or remotely, you can use this to force releasing locks.')
 	if not args:
 		args = ['-h']
 	opts = parser.parse_args(args)
@@ -83,28 +87,40 @@ def read_remote(dirpth, verbose=0):
 			return
 		else:
 			dirpth = dirname(dirpth)
-	return StopIteration
 
 
 def test_remote(remote_host, remote_path, verbose=0):
 	"""
 	Test that logging in to the remote works and that the directory exists.
 	"""
-	cmd = ['ssh', remote_host] + "if [ -d \'{0:s}\' ]; then echo \'yes\'; else echo \'no\'; fi".format(remote_path).split()
+	# cmd = ['ssh', remote_host, '"if [ -d {0:s} ]; then echo yes; else echo no; fi"'.format(remote_path)]
+	# cmd = ['ssh', remote_host] + "if [ -d \'{0:s}\' ]; then echo \'yes\'; else echo \'no\'; fi".format(remote_path).split()
+	# cmd = ['bash -c \'if [ -d "{0:s}" ]; then echo yes; else echo no; fi\''.format(remote_path)]
+	cmd = ['ssh', remote_host, ('"if [ -d \"{0:s}\" ]; then if [ -e \"{1:s}\" ]; then echo \"locked\"; else echo \"ok\"; fi; '
+		'else echo \"nonexistent\"; fi;"').format(remote_path, join(remote_path, lock_file_name))]
+	# cmd = ['ssh scar "if [ -d "/data/" ]; then echo "yes"; else echo "no"; fi;"']
+	# cmd = ['ssh scar "echo \"hi\"; if [ -d "/filesy/" ]; then echo " yes"; else echo " no"; fi"']
+	# cmd = shlex.split('bash -c "if [ -d {0:s} ]; then echo yes; else echo no; fi"'.format(remote_path))
+	# Popen('ssh scar "echo \"\$HOSTNAME\"; if [ -d "/filesy/" ]; then echo " yes"; else echo " no"; fi"', shell=True, stdout=PIPE, stderr=PIPE).communicate()
+	# print(cmd)
 	if verbose:
 		stdout.write(' '.join(cmd) + '\n')
-	proc = Popen(cmd, stdin=None, stdout=PIPE, stderr=PIPE)
-	out, err = proc.communicate()
-	if out.strip() == 'yes':
-		return True
-	elif out.strip() == 'no':
+	proc = Popen(' '.join(cmd), stdin=None, stdout=PIPE, stderr=PIPE, shell=True)
+	out, err = [(val or '').strip() for val in proc.communicate()]
+	if out == 'locked':
+		stderr.write(('directory `{1:s}` is already locked on host `{0:s}`; another synchronization '
+			'may be running; if not, use `unlock`.\n').format(remote_host, remote_path))
 		return False
+	elif out == 'nonexistent':
+		stderr.write('directory `{1:s}` not found or could not log in to host `{0:s}`\n'.format(remote_host, remote_path))
+		return False
+	elif out == 'ok':
+		return True
 	else:
-		err = '(no output received)'
-	if err:
-		stderr.write('there was a problem while connecting to the remote {0:s}:\n'.format(remote_host))
-		stderr.write(str(err) + '\n')
-		return
+		err += 'no or incorrect output received: "{0:s}"'.format(out.replace(b'\n', b''))
+	stderr.write('there was a problem while connecting to the remote {0:s}:\n'.format(remote_host))
+	stderr.write(str(err) + '\n')
+	return False
 
 
 def init(remote, local_dir=None, do_test=True, verbose=0):
@@ -126,6 +142,29 @@ def init(remote, local_dir=None, do_test=True, verbose=0):
 	stdout.write('sync directory initialized with remote directory {1:s} on host {0:s}\n'.format(remote_host, remote_path))
 
 
+def unlock(local_path, remote_host, remote_path, verbose=0):
+	pth = join(local_path, lock_file_name)
+	if exists(pth):
+		stdout.write('removing lock file {0:s}\n'.format(pth))
+		remove(pth)
+	elif verbose:
+		stdout.write('local directory not locked\n')
+	pth = join(remote_path, lock_file_name)
+	# cmd = ['ssh', 'scar', '"if [ -e \"{0:s}\" ]; then echo \"removing lock file {0:s} on {1:s}\"; rm -f \"{0:s}\"; fi;"'.format(pth, remote_host)]
+	# cmd = ['ssh', remote_host, '"if [ -e \"{0:s}\" ]; then echo \"removing lock file {0:s} on {1:s}\"; fi;"'.format(remote_path, join(pth, remote_host))]
+	# cmd = ['ssh', remote_host, '"echo \"\$HOSTNAME\""'.format(remote_path, join(pth, remote_host))]
+	cmd = ['ssh', remote_host, '"if [ -e "{0:s}" ]; then echo "removing lock file {0:s} on {1:s}"; rm -f "{0:s}"; {2:s} fi;"'
+		.format(pth, remote_host, 'else echo "remote on {0:s} not locked";'.format(remote_host) if verbose else '')]
+	if verbose:
+		stdout.write(' '.join(cmd) + '\n')
+	# print('hello?')
+	proc = Popen(' '.join(cmd), shell=True)
+	# print('hello!')
+	proc.communicate()
+	# print('hello!!')
+	exit(1)
+
+
 def push(local_dir, remote_host, remote_dir, verbose=0):
 	"""
 	Send the local files to the remote.
@@ -135,18 +174,13 @@ def push(local_dir, remote_host, remote_dir, verbose=0):
 		ignore_file_pth=ignore_file_pth, verbose=verbose)
 
 
-#todo: test if it works locally
-#todo: show an error when locked
-#todo: also use flock on local machine
-
-
 def pull(local_dir, remote_host, remote_dir, verbose=0):
 	"""
 	Get the remote files to the local directory.
 	"""
 	ignore_file_pth = join(local_dir, ignore_file_name)
 	transmit_dir(source_host=remote_host, source_dir=remote_dir, target_host=None, target_dir=local_dir,
-        ignore_file_pth=ignore_file_pth, verbose=verbose)
+		ignore_file_pth=ignore_file_pth, verbose=verbose)
 
 
 def transmit_dir(source_host, source_dir, target_host, target_dir, ignore_file_pth='', verbose=0):
@@ -154,23 +188,20 @@ def transmit_dir(source_host, source_dir, target_host, target_dir, ignore_file_p
 	Send everything from `source_dir` to `target_dir`.
 	"""
 	assert not source_dir.endswith('/') and not target_dir.endswith('/')
-	# assert remote_lock in ['exclusive', 'shared', None]
 	cmd = copy(sync_cmd)
 	if isfile(ignore_file_pth):
 		cmd += ['--exclude-from={0:s}'.format(ignore_file_pth)]
 	local_lock_type, remote_lock_type = (LOCK_EX, 'shared') if source_host else (LOCK_SH, 'exclusive')
 	local_dir, remote_dir = (target_dir, source_dir) if source_host else (source_dir, target_dir)
-	# remote_lock_file = join(target_dir, 'rsync.lock~')
 	cmd += [('--rsync-path=\'function lock_rsync () {{ for target; do true; done; mkdir -p "$target"; '
-        'flock --{0:s} --timeout=1 "{1:s}" --command "\\rsync $*"; }}; lock_rsync\'')
-		    .format(remote_lock_type, join(remote_dir, lock_file_name))]
+		'flock --{0:s} --timeout=1 "{1:s}" --command "\\rsync $*"; }}; lock_rsync\'')
+			.format(remote_lock_type, join(remote_dir, lock_file_name))]
 	cmd += ['{0:s}:{1:s}/'.format(source_host or '', source_dir).lstrip(':'), '{0:s}:{1:s}'.format(target_host or '', target_dir).lstrip(':')]
 	if verbose:
 		stdout.write(' '.join(cmd) + '\n')
 	with open(join(local_dir, lock_file_name), 'w+') as fh:
 		flock(fh, local_lock_type)
 		proc = Popen(' '.join(cmd), stdin=None, stdout=PIPE, stderr=PIPE, shell=True)
-		# proc = Popen(cmd, stdin=None, stdout=PIPE, stderr=PIPE)
 		for line in iter(proc.stdout.readline, b''):
 			stdout.write(line.split(' ', 1)[-1])
 		out, err = proc.communicate()
@@ -190,9 +221,12 @@ def main(args):
 	if not remote:
 		exit(1)
 	local_path, remote_host, remote_path = remote
+	if opts.action == 'unlock':
+		unlock(local_path, remote_host, remote_path, verbose=opts.verbose)
+		return
 	if opts.do_test:
 		if not test_remote(remote_host, remote_path, verbose=opts.verbose):
-			stderr.write('directory `{1:s}` not found or could not log in to host `{0:s}`\n'.format(remote_host, remote_path))
+			# stderr.write('directory `{1:s}` not found or could not log in to host `{0:s}`\n'.format(remote_host, remote_path))
 			exit(2)
 	if opts.action == 'push':
 		push(local_path, remote_host, remote_path, verbose=opts.verbose)
