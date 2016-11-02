@@ -12,7 +12,7 @@ So why not use some wrapping code for rsync instead? That's what this does.
 
 from argparse import ArgumentParser
 from copy import copy
-from fcntl import flock, LOCK_EX, LOCK_SH, LOCK_UN
+from fcntl import flock, LOCK_EX, LOCK_SH, LOCK_UN, LOCK_NB
 from os import getcwd, remove
 from re import match
 from sys import stderr, argv, stdout
@@ -108,8 +108,7 @@ def test_remote(remote_host, remote_path, verbose=0):
 	proc = Popen(' '.join(cmd), stdin=None, stdout=PIPE, stderr=PIPE, shell=True)
 	out, err = [(val or b'').decode('utf8').strip() for val in proc.communicate()]
 	if out == 'locked':
-		stderr.write(('directory `{1:s}` is already locked on host `{0:s}`; another synchronization '
-			'may be running; if not, use `unlock`.\n').format(remote_host, remote_path))
+		stderr.write(('directory `{1:s}` is already locked on host `{0:s}`.\n').format(remote_host, remote_path))
 		return False
 	elif out == 'nonexistent':
 		stderr.write('directory `{1:s}` not found or could not log in to host `{0:s}`\n'.format(remote_host, remote_path))
@@ -216,7 +215,12 @@ def transmit_dir(source_host, source_dir, target_host, target_dir, delete, ignor
 	if verbose:
 		stdout.write(' '.join(cmd) + '\n')
 	with open(join(local_dir, lock_file_name), 'w+') as fh:
-		flock(fh, local_lock_type)
+		try:
+			flock(fh, local_lock_type | LOCK_NB)
+		except IOError:
+			stderr.write(('local directory `{0:s}` is already locked; another synchronization '
+				'may be running; if not, use `unlock`\n').format(local_dir))
+			return
 		try:
 			proc = Popen(' '.join(cmd), stdin=None, stdout=PIPE, stderr=PIPE, shell=True)
 			for line in iter(proc.stdout.readline, b''):
