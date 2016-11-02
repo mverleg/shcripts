@@ -100,12 +100,13 @@ def test_remote(remote_host, remote_path, verbose=0):
 	"""
 	Test that logging in to the remote works and that the directory exists.
 	"""
-	cmd = ['ssh', remote_host, ('"if [ -d \"{0:s}\" ]; then if [ -e \"{1:s}\" ]; then echo \"locked\"; else echo \"ok\"; fi; '
+	cmd = ['ssh', remote_host, ('"if [ -d \"{0:s}\" ]; then flock --nonblock \"{1:s}\" --command \"\"; '
+		'if [ \"$?\" == \"0\" ]; then echo \"ok\"; else echo \"locked\"; fi; '
 		'else echo \"nonexistent\"; fi;"').format(remote_path, join(remote_path, lock_file_name))]
 	if verbose:
 		stdout.write(' '.join(cmd) + '\n')
 	proc = Popen(' '.join(cmd), stdin=None, stdout=PIPE, stderr=PIPE, shell=True)
-	out, err = [(val or b'').decode('ascii').strip() for val in proc.communicate()]
+	out, err = [(val or b'').decode('utf8').strip() for val in proc.communicate()]
 	if out == 'locked':
 		stderr.write(('directory `{1:s}` is already locked on host `{0:s}`; another synchronization '
 			'may be running; if not, use `unlock`.\n').format(remote_host, remote_path))
@@ -219,7 +220,7 @@ def transmit_dir(source_host, source_dir, target_host, target_dir, delete, ignor
 		try:
 			proc = Popen(' '.join(cmd), stdin=None, stdout=PIPE, stderr=PIPE, shell=True)
 			for line in iter(proc.stdout.readline, b''):
-				stdout.write(line.decode('ascii').split(' ', 1)[-1])
+				stdout.write(line.decode('utf8').split(' ', 1)[-1])
 			out, err = proc.communicate()
 		except KeyboardInterrupt:
 			unlock_remote(remote_host, remote_dir, verbose=verbose)
