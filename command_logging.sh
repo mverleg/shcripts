@@ -2,22 +2,22 @@
 
 function tail_truncate ()
 {
-	# 
+	#
 	# Preserve the last $2 (default 5k) lines of file $1.
 	# Note that redirecting directly will empty the already open file.
-	# 
+	#
 	if [ -z "$1" ]; then printf "tail_truncate needs a filepath as first argument"; return 1; fi
 	if [ -n "$2" ]; then cnt="$2"; else cnt="5000"; fi
 	touch "$1" || return 2
 	content="$(tail -n $cnt $1)"
-	printf -- "$content\n" > "$1"
+	echo -e "$content\n" > "$1"
 }
 
-function log_err_all () 
+function log_err_all ()
 {
 	#
 	# Similar to log_err_all_named but uses the bassename of the first part as name.
-	# 
+	#
 	cmd=$@
 	flags=""
 	for word in $cmd; do
@@ -36,21 +36,21 @@ function log_err_all ()
 
 function log_err_all_named ()
 {
-	# 
+	#
 	# Redirect stdout to $1.out, stderr to $2.err and the combination of them to $2.
 	# A downside is that after this function, everything is in stdout.
-	# 
+	#
 	# Arguments:
 	#  -a  Append to logs instead of overwriting.
-	#  -b  Attempts to prevent mixed order (because of buffering), but doesn't 
+	#  -b  Attempts to prevent mixed order (because of buffering), but doesn't
 	#		 always help, and can't be used with functions or groups of commands.
 	#  -c  Write the command before any output (most useful when appending).
 	#  -t  Truncate logs to 5k lines (before starting).
 	#  -u  Do not add timestamps.
-	# 
+	#
 	if [ -z "$1" ]; then printf "log_err_all_named needs path to log as first argument"; return 1; fi
 	if [ -z "$2" ]; then printf "log_err_all_named needs a command to execute"; return 1; fi
-	
+
 	# get flags
 	flags=""
 	cmd=$@
@@ -64,7 +64,7 @@ function log_err_all_named ()
 		fi
 	done
 
-	
+
 	# handle flags
 	if [[ $flags == *"-a"* ]]; then ap="--append"; else ap=""; fi
 	if [[ $flags == *"-b"* ]]; then pre="stdbuf -oL -eL "; else pre=""; fi
@@ -75,7 +75,7 @@ function log_err_all_named ()
 		if [[ $flags == *"-u"* ]]; then header="=== $cmd ==="; else header=$(echo "=== $cmd ===" | ts '%Y-%m-%d,%H:%M:%.S '); fi
 		printf "$header\n" | tee $ap "$fname.out" | tee $ap "$fname.err" | tee $ap "$fname.all" 1> /dev/null
 	fi
-	
+
 	# run the command with logging
 	if [[ $flags == *"-u"* ]]; then
 		{
@@ -94,10 +94,10 @@ function log_err_all_named ()
 
 function test_logging_function ()
 {
-	# 
+	#
 	# Function that can be used to test the above functions, e.g.
 	#   log_err_all_named -a -c -t "/tmp/mylog" test_logging_function arg1 arg2
-	# 
+	#
 	sleep 0.5
 	printf "output1\n"
 	printf "error1\n" 1>&2
