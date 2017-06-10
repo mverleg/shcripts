@@ -116,7 +116,7 @@ def test_remote(remote_host, remote_path, verbose=0):
 	elif out == 'ok':
 		return True
 	else:
-		err += ' no or incorrect output received: "{0:s}"'.format(out.replace(b'\n', b''))
+		err += ' no or incorrect output received: "{0:s}"'.format(out.replace('\n', ''))
 	stderr.write('there was a problem while connecting to the remote {0:s}:\n'.format(remote_host))
 	stderr.write(str(err) + '\n')
 	return False
