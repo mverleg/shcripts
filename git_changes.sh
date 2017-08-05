@@ -16,19 +16,27 @@ function git_changes_curdir ()
 	then
 		nm="$nm $(printf "%-26s" $(git config --get remote.origin.url))"
 	fi
+	do_push=false
+    if [[ $* == *-d* ]]
+    then
+		do_push=true
+    fi
 	if [ ! -z "$(git status --porcelain)" ]
 	then # check uncomitted changes
 		echo "$nm [commit]"
+		if $do_push; then pushd . 1> /dev/null ; fi
 	elif ! git rev-list '@{u}' &> /dev/null
 	then # check no remote
 		echo "$nm [no remote]"
+		if $do_push; then pushd . 1> /dev/null ; fi
 	elif [ ! -z "$(git rev-list '@{u}..HEAD')" ]
 	then # check unpushed changes
 		echo "$nm [push]"
+		if $do_push; then pushd . 1> /dev/null ; fi
 	elif [[ $* == *-a* ]]
 	then
 		echo "$nm [ok]"
-	fi;
+	fi
 }
 
 function git_changes_recursive ()
@@ -65,6 +73,10 @@ function git_changes_recursive ()
 	else
 		repopths="$(find $PWD $findflag -type d -name '.*' -prune -type d -name '.git' -print 2> /dev/null)"
 	fi
+	if [[ ! $* == *-d* ]]
+	then
+		echo "hint: use -d to pushd all the directories which have changes"
+	fi
 	for line in $repopths
 		do
 			cd "$line/.."
@@ -73,5 +85,6 @@ function git_changes_recursive ()
 		done
 	echo "done!"
 }
+
 
 
