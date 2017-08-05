@@ -12,6 +12,9 @@ alias log="log_err_all"
 source "$here/git_changes.sh"
 alias git_changes="git_changes_recursive"
 
+# find machines on local network
+alias scan_network="\"$here/scan_network.sh\""
+
 # json
 alias json_zoom="python $here/json_zoom.py"
 function json_dump () { cat "$1" | python -m json.tool > /tmp/jsonv.json; less -S /tmp/jsonv.json; }
